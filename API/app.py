@@ -26,7 +26,7 @@ from inference.colonoscopy_rag_database import RAG_SYSTEM_PROMPTS, get_rag_conte
 load_dotenv()
 
 # Get configuration from environment variables
-API_KEY = os.getenv("OPENAI_API_KEY", "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")
+API_KEY = os.getenv("OPENAI_API_KEY", "")
 BASE_URL = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
 MODEL = os.getenv("OPENAI_MODEL", "qwen/qwen2.5-vl-32b-instruct:free")
 SITE_URL = os.getenv("OPENROUTER_SITE_URL", "http://localhost:8501")
