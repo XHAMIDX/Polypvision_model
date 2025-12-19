@@ -1,0 +1,184 @@
+# Multi-Stage Training Configuration
+
+# Global Settings
+seed: 42
+device: 'cuda'
+num_workers: 4
+pin_memory: true
+
+# Dataset Paths
+data:
+  dataset_a_path: '/content/drive/MyDrive/First_project/cat_images'  # Binary: hyperplastic vs adenoma
+  dataset_b_path: '/content/drive/MyDrive/POLYP/DATA/SEG/Kvasir-SEG'  # Segmentation dataset
+  dataset_c_path: 'data/dataset_c'  # Adenoma subtypes
+
+# Stage 1: Backbone Pretraining on Dataset A
+stage1:
+  model: 'efficientnet_b2'
+  num_classes: 2
+  input_size: 224
+  val_split: 0.2
+  batch_size: 32
+  epochs: 50
+  early_stopping_patience: 7
+  
+  optimizer:
+    name: 'AdamW'
+    lr: 1.0e-4
+    weight_decay: 1.0e-2
+  
+  scheduler:
+    name: 'CosineWarmup'
+    warmup_ratio: 0.05
+  
+  loss:
+    name: 'FocalLoss'  # or 'CrossEntropy'
+    focal_alpha: 0.25
+    focal_gamma: 2.0
+  
+  sampler: 'WeightedRandomSampler'  # or 'StratifiedSampler'
+  
+  metrics:
+    - 'macro_f1'
+    - 'balanced_accuracy'
+    - 'roc_auc'
+    - 'per_class_recall'
+  
+  checkpoint_metric: 'macro_f1'
+  checkpoint_mode: 'max'
+  
+  output_path: 'checkpoints/stage1/backbone_pretrained_onA.pth'
+  
+  # Set to checkpoint path to resume training, or null to train from scratch
+  resume_checkpoint: null  # e.g., 'checkpoints/backbone_pretrained_onA.pth'
+
+# Stage 2: Segmentation Training on Dataset B
+stage2:
+  architecture: 'UnetPlusPlus'  # or 'Unet', 'AttentionUnet'
+  encoder: 'efficientnet-b2'  # MUST match Stage 1
+  encoder_weights: 'checkpoints/stage1/backbone_pretrained_onA.pth'  # Load Stage 1 weights
+  input_size: 512
+  val_split: 0.2
+  
+  # Folder names in dataset
+  image_dir: 'images'      # or 'Cropped' if using that structure
+  mask_dir: 'masks'        # or 'GT_Cropped' if using that structure
+  
+  # Stage 2A: Head-only training
+  stage2a:
+    freeze_encoder: true
+    batch_size: 8
+    epochs: 10
+    optimizer:
+      name: 'AdamW'
+      lr: 1.0e-3
+      weight_decay: 1.0e-2
+    loss:
+      name: 'DiceBCE'
+      dice_weight: 0.5
+      bce_weight: 0.5
+  
+  # Stage 2B: Full fine-tuning
+  stage2b:
+    freeze_encoder: false
+    unfreeze_last_n_blocks: 2
+    batch_size: 4
+    epochs: 100
+    early_stopping_patience: 15
+    optimizer:
+      name: 'AdamW'
+      lr_backbone: 1.0e-5
+      lr_head: 1.0e-4
+      weight_decay: 1.0e-2
+    loss:
+      name: 'DiceFocal'
+      dice_weight: 0.5
+      focal_weight: 0.5
+    
+    scheduler:
+      name: 'CosineAnnealingLR'
+      T_max: 100
+    
+    metrics:
+      - 'dice'
+      - 'iou'
+    
+    checkpoint_metric: 'dice'
+    checkpoint_mode: 'max'
+  
+  output_backbone: 'checkpoints/stage2/backbone_after_seg.pth'
+  output_model: 'checkpoints/stage2/seg_best.pth'
+  
+  # Resume checkpoint options
+  resume_checkpoint_2a: null  # Leave null to train Stage 2A from scratch
+  resume_checkpoint_2b: null  # Load Stage 2A checkpoint for Stage 2B if specified
+
+# Stage 3: Adenoma Subtype Classification
+stage3:
+  model: 'efficientnet_b2'  # MUST match Stage 1 architecture
+  num_classes: 3
+  class_names:
+    - 'tubular'
+    - 'tubulovillous'
+    - 'villous'
+  dataset_path: null  # Defaults to data.dataset_c_path when null
+  pretrained_backbone: 'checkpoints/stage2/backbone_after_seg.pth'
+  input_size: 224
+  val_split: 0.2
+  batch_size: 16
+  epochs: 50
+  early_stopping_patience: 8
+  resume_checkpoint: null
+  freeze_backbone: false
+  unfreeze_last_n_blocks: 2
+
+  optimizer:
+    name: 'AdamW'
+    lr: 1.0e-4
+    weight_decay: 1.0e-2
+
+  scheduler:
+    name: 'CosineAnnealingLR'
+    T_max: 50
+
+  loss:
+    name: 'FocalLoss'
+    focal_alpha: 0.25
+    focal_gamma: 2.0
+    use_class_weights: true
+
+  sampler: 'WeightedRandomSampler'
+
+  augmentation:
+    advanced: true
+    use_mixup: true
+    mixup_alpha: 0.2
+
+  checkpoint_metric: 'macro_f1'
+  checkpoint_mode: 'max'
+  checkpoint_dir: 'checkpoints/stage3'
+  log_dir: 'logs/stage3'
+
+  output_path: 'checkpoints/stage3/adenoma_subtype_classifier_best.pth'
+
+# Inference Configuration
+inference:
+  binary_model_path: 'checkpoints/stage1/best_model.pth'  # Stage 1 best checkpoint
+  seg_model_path: 'checkpoints/stage2/seg_best.pth'  # Stage 2 segmentation model
+  subtype_model_path: 'checkpoints/stage3/best_model.pth'  # Stage 3 best checkpoint
+  input_size: 224
+  seg_input_size: 512
+  device: 'cuda'
+  
+  # Adjust threshold for higher recall (sensitivity)
+  binary_threshold: 0.5  # Classification threshold
+  seg_threshold: 0.5  # Segmentation threshold (0-1)
+  binary_classes:
+    - 'hyperplastic'
+    - 'adenoma'
+  subtype_classes:
+    - 'tubular'
+    - 'tubulovillous'
+    - 'villous'
+  
+  output_format: 'json'

@@ -1,0 +1,210 @@
+<mxfile host="app.diagrams.net" modified="2025-12-14T00:00:00.000Z" agent="5.0" etag="abc123" version="24.0.0" type="device">
+  <diagram id="R2lEEEUBhBx0_NaCf94b" name="Page-1">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- TITLE -->
+        <mxCell id="title" value="Hierarchical Polyp Classification &amp; Segmentation Pipeline" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="50" y="10" width="750" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ========== STAGE 1: BINARY CLASSIFICATION ========== -->
+        <mxCell id="stage1_title" value="STAGE 1: BINARY CLASSIFICATION" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fillColor=#E1D5E7;strokeColor=#9673A6" vertex="1" parent="1">
+          <mxGeometry x="50" y="60" width="300" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s1_input" value="Input Image&#10;[B, 3, 224, 224]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D4E6F1;strokeColor=#2E86C1" vertex="1" parent="1">
+          <mxGeometry x="100" y="100" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s1_backbone" value="EfficientNetV2-M&#10;Backbone&#10;52.8M params" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCF3CF;strokeColor=#F39C12" vertex="1" parent="1">
+          <mxGeometry x="70" y="190" width="180" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s1_pool" value="Global Avg Pool&#10;[B, feature_dim]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5F4E6;strokeColor=#27AE60" vertex="1" parent="1">
+          <mxGeometry x="100" y="300" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s1_head" value="Dropout + Linear&#10;→ [B, 2]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#E74C3C" vertex="1" parent="1">
+          <mxGeometry x="100" y="400" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s1_output" value="Output: Adenomatous&#10;or Hyperplastic&#10;Loss: Focal Loss" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4D03F;strokeColor=#D68910" vertex="1" parent="1">
+          <mxGeometry x="100" y="500" width="120" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 1 Arrows -->
+        <mxCell id="s1_arrow1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#2E86C1" edge="1" parent="1" source="s1_input" target="s1_backbone">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_arrow2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#F39C12" edge="1" parent="1" source="s1_backbone" target="s1_pool">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_arrow3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#27AE60" edge="1" parent="1" source="s1_pool" target="s1_head">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_arrow4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#E74C3C" edge="1" parent="1" source="s1_head" target="s1_output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== STAGE 2: SEGMENTATION ========== -->
+        <mxCell id="stage2_title" value="STAGE 2: SEGMENTATION (UNet++)" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fillColor=#E1D5E7;strokeColor=#9673A6" vertex="1" parent="1">
+          <mxGeometry x="400" y="60" width="300" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s2_input" value="Input Image&#10;[B, 3, H, W]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D4E6F1;strokeColor=#2E86C1" vertex="1" parent="1">
+          <mxGeometry x="450" y="100" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s2_encoder" value="ENCODER&#10;EfficientNetV2-M&#10;(From Stage 1)&#10;Frozen/Trainable" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCF3CF;strokeColor=#F39C12" vertex="1" parent="1">
+          <mxGeometry x="420" y="190" width="180" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s2_decoder" value="DECODER&#10;UNet++&#10;Progressive Fusion&#10;Skip Connections" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5F4E6;strokeColor=#27AE60" vertex="1" parent="1">
+          <mxGeometry x="420" y="320" width="180" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s2_output" value="Output Mask&#10;[B, 1, H, W]&#10;Loss: Dice + BCE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#E74C3C" vertex="1" parent="1">
+          <mxGeometry x="450" y="460" width="120" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 2 Arrows -->
+        <mxCell id="s2_arrow1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#2E86C1" edge="1" parent="1" source="s2_input" target="s2_encoder">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_arrow2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#F39C12" edge="1" parent="1" source="s2_encoder" target="s2_decoder">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_arrow3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#27AE60" edge="1" parent="1" source="s2_decoder" target="s2_output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== STAGE 3: ADENOMA SUBTYPE ========== -->
+        <mxCell id="stage3_title" value="STAGE 3: ADENOMA SUBTYPE" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fillColor=#E1D5E7;strokeColor=#9673A6" vertex="1" parent="1">
+          <mxGeometry x="700" y="60" width="150" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s3_input" value="Input Image&#10;Adenomatous Only&#10;[B, 3, 224, 224]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D4E6F1;strokeColor=#2E86C1" vertex="1" parent="1">
+          <mxGeometry x="725" y="100" width="100" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s3_backbone" value="EfficientNetV2-M&#10;From Stage 2&#10;52.8M params" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCF3CF;strokeColor=#F39C12" vertex="1" parent="1">
+          <mxGeometry x="710" y="200" width="130" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s3_head" value="Dropout + Linear&#10;→ [B, 3]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#E74C3C" vertex="1" parent="1">
+          <mxGeometry x="730" y="320" width="90" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s3_output" value="Output: Tubular&#10;Tubulovillous&#10;Villous&#10;Loss: Focal Loss" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4D03F;strokeColor=#D68910" vertex="1" parent="1">
+          <mxGeometry x="710" y="420" width="130" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 3 Arrows -->
+        <mxCell id="s3_arrow1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#2E86C1" edge="1" parent="1" source="s3_input" target="s3_backbone">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_arrow2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#F39C12" edge="1" parent="1" source="s3_backbone" target="s3_head">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_arrow3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#E74C3C" edge="1" parent="1" source="s3_head" target="s3_output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== INFERENCE FLOW ========== -->
+        <mxCell id="inference_title" value="INFERENCE FLOW" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fillColor=#E1D5E7;strokeColor=#9673A6" vertex="1" parent="1">
+          <mxGeometry x="50" y="620" width="800" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_input" value="Input Image" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D4E6F1;strokeColor=#2E86C1" vertex="1" parent="1">
+          <mxGeometry x="350" y="670" width="120" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_stage1" value="Stage 1 Classifier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCF3CF;strokeColor=#F39C12" vertex="1" parent="1">
+          <mxGeometry x="100" y="750" width="120" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_hyperplastic" value="Hyperplastic" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5F4E6;strokeColor=#27AE60" vertex="1" parent="1">
+          <mxGeometry x="50" y="850" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_adenomatous" value="Adenomatous" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#E74C3C" vertex="1" parent="1">
+          <mxGeometry x="200" y="750" width="100" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_stage3" value="Stage 3 Classifier&#10;(Subtype)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4D03F;strokeColor=#D68910" vertex="1" parent="1">
+          <mxGeometry x="180" y="850" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_tubular" value="Tubular" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#AED6F1;strokeColor=#1F618D" vertex="1" parent="1">
+          <mxGeometry x="120" y="950" width="80" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_tubulovillous" value="Tubulovillous" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#AED6F1;strokeColor=#1F618D" vertex="1" parent="1">
+          <mxGeometry x="220" y="950" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_villous" value="Villous" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#AED6F1;strokeColor=#1F618D" vertex="1" parent="1">
+          <mxGeometry x="340" y="950" width="80" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Inference Arrows -->
+        <mxCell id="inf_arrow1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#2E86C1" edge="1" parent="1" source="inf_input" target="inf_stage1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_arrow2" value="Hyperplastic" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#27AE60" edge="1" parent="1" source="inf_stage1" target="inf_hyperplastic">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_arrow3" value="Adenomatous" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#E74C3C" edge="1" parent="1" source="inf_stage1" target="inf_adenomatous">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_arrow4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#D68910" edge="1" parent="1" source="inf_adenomatous" target="inf_stage3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_arrow5" value="Tubular" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#1F618D" edge="1" parent="1" source="inf_stage3" target="inf_tubular">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_arrow6" value="Tubulovillous" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#1F618D" edge="1" parent="1" source="inf_stage3" target="inf_tubulovillous">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inf_arrow7" value="Villous" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=1;strokeColor=#1F618D" edge="1" parent="1" source="inf_stage3" target="inf_villous">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- LEGEND -->
+        <mxCell id="legend_title" value="Legend" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="750" width="300" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_backbone" value="Backbone: EfficientNetV2-M (52.8M params)" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="400" y="775" width="350" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_encoder" value="Encoder: EfficientNetV2-M (transferred from previous stage)" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="400" y="800" width="350" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_decoder" value="Decoder: UNet++ with skip connections for segmentation" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="400" y="825" width="350" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_transfer" value="Transfer Learning: Stage1 → Stage2 Encoder, Stage2 Encoder → Stage3 Backbone" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="400" y="850" width="350" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_losses" value="Losses: Stage1=FocalLoss, Stage2=Dice+BCE, Stage3=FocalLoss+MixUp" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9" vertex="1" parent="1">
+          <mxGeometry x="400" y="885" width="350" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
