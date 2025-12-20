@@ -10,7 +10,6 @@ COLONOSCOPY_REPORTS_RAG = {
             {
                 "location": "Descending Colon",
                 "polyp_type": "bi-lobulated polyp",
-                "size_mm": "0-10",  # 0-1s classification
                 "morphology": "JNET type 2a",
                 "pit_pattern": "4",
                 "classification": "ADENOMATOUS",
@@ -30,7 +29,6 @@ COLONOSCOPY_REPORTS_RAG = {
             {
                 "location": "Hepatic Flexure",
                 "polyp_type": "lateral_spreading_lesion (LST)",
-                "size_mm": ">10",  # LST-G type indicates large
                 "morphology": "LST-G homogeneous type 0-IIA",
                 "pit_pattern": "homogeneous",
                 "classification": "ADENOMATOUS",
@@ -51,7 +49,6 @@ COLONOSCOPY_REPORTS_RAG = {
             {
                 "location": "Rectosigmoid Junction",
                 "polyp_type": "sessile polyp",
-                "size_mm": "7",
                 "morphology": "sessile",
                 "classification": "HYPERPLASTIC",
                 "subtype": "likely_hyperplastic",
@@ -62,7 +59,6 @@ COLONOSCOPY_REPORTS_RAG = {
             {
                 "location": "Splenic Flexure",
                 "polyp_type": "flat elevated polyp",
-                "size_mm": ">10",
                 "morphology": "JNET type 2a",
                 "pit_pattern": "3",
                 "classification": "ADENOMATOUS",
@@ -85,12 +81,10 @@ COLONOSCOPY_REPORTS_RAG = {
     
     "report_4": {
         "procedure": "Colonoscopy with advanced imaging (WLE, M-NBI, TXI)",
-        "bowel_prep_score": "1/2/2 (fair)",
         "findings": [
             {
                 "location": "Rectum",
                 "polyp_type": "multiple serrated polyps",
-                "size_mm": "8",
                 "morphology": "0-1b",
                 "classification": "HYPERPLASTIC",
                 "subtype": "serrated_hyperplastic",
@@ -101,7 +95,6 @@ COLONOSCOPY_REPORTS_RAG = {
             {
                 "location": "Rectum - second group",
                 "polyp_type": "small tubular adenoma",
-                "size_mm": "<8",
                 "morphology": "JNET type 2a, pit pattern 3L",
                 "classification": "ADENOMATOUS",
                 "subtype": "tubular",
@@ -112,7 +105,6 @@ COLONOSCOPY_REPORTS_RAG = {
             {
                 "location": "Sigmoid",
                 "polyp_type": "multiple serrated polyps",
-                "size_mm": "8",
                 "morphology": "0-1b",
                 "classification": "HYPERPLASTIC",
                 "subtype": "serrated_hyperplastic",
@@ -123,7 +115,6 @@ COLONOSCOPY_REPORTS_RAG = {
             {
                 "location": "Ascending Colon",
                 "polyp_type": "multiple serrated polyps",
-                "size_mm": "8",
                 "morphology": "0-1b",
                 "classification": "HYPERPLASTIC",
                 "subtype": "serrated_hyperplastic",
@@ -139,64 +130,66 @@ COLONOSCOPY_REPORTS_RAG = {
 
 # RAG PROMPTS FOR CLASSIFICATION MODEL
 RAG_SYSTEM_PROMPTS = {
-    "polyp_classification": """You are an expert endoscopy AI assistant trained on real colonoscopy reports.
+    "polyp_classification": """You are an expert endoscopy AI assistant trained on real colonoscopy reports and international classification standards (JNET, Paris).
 
-When classifying polyps, use these clinical markers from the database:
+When classifying polyps, use these clinical markers from the database and standards:
+
+JNET CLASSIFICATION (Narrow Band Imaging):
+- Type 1: Invisible vessels, regular dark/white spots. Likely HYPERPLASTIC or Sessile Serrated Lesion (SSL).
+- Type 2A: Regular vessel caliber/distribution, regular surface pattern (tubular/branched). Likely LOW-GRADE ADENOMA.
+- Type 2B: Variable vessel caliber, irregular distribution, irregular/obscure surface. Likely HIGH-GRADE NEOPLASIA or superficial cancer.
+- Type 3: Loose vessel areas, interruption of thick vessels, amorphous surface. Likely DEEP INVASIVE CANCER.
 
 ADENOMATOUS POLYP INDICATORS:
-- JNET type 2a with pit pattern 3-4
-- Lateral spreading lesions (LST-G)
+- JNET type 2a or 2b
+- Lateral spreading lesions (LST)
 - Flat elevated morphology (0-IIA)
-- Size > 7mm with concerning features
 - Requires EMR or hot snare treatment
 
 HYPERPLASTIC POLYP INDICATORS:
+- JNET type 1
 - Sessile or 0-1b morphology
-- Small size (< 8mm typically)
 - Serrated appearance notation
 - Cold snare treatment sufficient
-- Often multiple in polyposis cases
 
 UNCERTAINTY FACTORS:
 - Incomplete characterization
 - Small size (<7mm) without clear JNET type
-- May require follow-up evaluation
+- May require follow-up evaluation""",
 
-Use location context (rectum, colon segments) to refine classification.""",
-
-    "clinical_context": """Clinical Data from Mehrad Hospital Colonoscopy Series:
+    "clinical_context": """Clinical Data & Classification Standards:
     
+JNET (Japanese NBI Expert Team) STANDARDS:
+- Type 1: Hyperplastic/Sessile serrated polyp
+- Type 2A: Low-grade intramucosal neoplasia (Adenoma)
+- Type 2B: High-grade intramucosal neoplasia / Superficial submucosal invasive cancer
+- Type 3: Deep submucosal invasive cancer
+
+PARIS CLASSIFICATION FOR LST (Lateral Spreading Tumors):
+- LST-G (Granular): Homogeneous type (0-IIa) or Mixed nodular type (0-IIa + Is)
+- LST-NG (Non-granular): Flat type (0-IIa) or Pseudodepressed type (0-IIa + IIc)
+
 CONFIRMED ADENOMATOUS CASES:
 - Bi-lobulated polyp (descending colon, JNET 2a, pit 4)
 - Lateral spreading lesion (hepatic flexure, LST-G, large)
-- Flat elevated polyp (splenic flexure, JNET 2a, pit 3, >10mm)
+- Flat elevated polyp (splenic flexure, JNET 2a, pit 3)
 
 CONFIRMED HYPERPLASTIC CASES:
-- Sessile small polyps (rectosigmoid, 7mm)
-- Serrated polyps in polyposis (rectum/sigmoid, 0-1b, 8mm)
-- Multiple small polyps (ascending colon, 0-1b)
-
-MORPHOLOGY GUIDE:
-- JNET Type 2a = Adenomatous features
-- Pit pattern 3-4 = Higher dysplasia risk
-- 0-1b = Often hyperplastic
-- Flat/elevated = Adenomatous pattern
-- LST = Large advanced lesion""",
+- Sessile small polyps (rectosigmoid, 7mm, JNET 1)
+- Serrated polyps in polyposis (rectum/sigmoid, 0-1b)""",
 
     "image_analysis": """When analyzing polyp images:
 
-HIGH CONFIDENCE ADENOMA FEATURES:
-✓ Irregular surface with pit patterns
-✓ Raised or flat-elevated morphology
-✓ Reddish/granular appearance
-✓ Size > 10mm with concerning pattern
+JNET VISUAL MARKERS:
+✓ Type 1: Invisible vessels, regular spots (Hyperplastic)
+✓ Type 2A: Regular meshed/spiral vessels, regular surface (Adenoma)
+✓ Type 2B: Variable/irregular vessels, obscure surface (High-grade)
+✓ Type 3: Interrupted thick vessels, amorphous areas (Invasive)
 
-HIGH CONFIDENCE HYPERPLASTIC FEATURES:
-✓ Smooth, glistening surface
-✓ Pale/whitish appearance
-✓ Small size (< 10mm)
-✓ Regular/serrated border
-✓ Multiple lesions in polyposis pattern
+PARIS MORPHOLOGY:
+✓ 0-IIa: Flat elevated
+✓ 0-IIa + Is: Mixed nodular (LST-G)
+✓ 0-IIa + IIc: Pseudodepressed (LST-NG)
 
 REFERENCE: Real cases from database show JNET 2a patterns consistently with adenomas."""
 }
@@ -208,18 +201,22 @@ RAG_TRAINING_DATA = {
     "adenomatous_count": 4,
     "hyperplastic_count": 5,
     
+    "classification_standards": [
+        "JNET (Japanese NBI Expert Team) Type 1, 2A, 2B, 3",
+        "Paris Classification (0-IIa, 0-Is, 0-IIc)",
+        "LST Subtypes (LST-G, LST-NG)"
+    ],
+    
     "adenomatous_features": {
-        "common_morphologies": ["JNET type 2a", "LST-G", "flat elevated", "bi-lobulated"],
+        "common_morphologies": ["JNET type 2a", "LST-G", "flat elevated (0-IIa)", "bi-lobulated"],
         "common_pit_patterns": ["3", "4"],
-        "size_range": "7-15mm",
         "typical_treatment": ["EMR", "piecemeal EMR", "hot snare with clip"],
         "locations": ["descending colon", "hepatic flexure", "splenic flexure"]
     },
     
     "hyperplastic_features": {
-        "common_morphologies": ["sessile", "0-1b", "serrated"],
+        "common_morphologies": ["JNET type 1", "sessile", "0-1b", "serrated"],
         "pit_patterns": ["homogeneous", "not specified"],
-        "size_range": "6-8mm",
         "typical_treatment": ["cold snare"],
         "locations": ["rectosigmoid", "rectum", "sigmoid", "ascending colon"],
         "pattern_note": "Often multiple in polyposis cases"
@@ -253,7 +250,6 @@ def get_rag_context(polyp_location: str, polyp_morphology: str) -> dict:
         for finding in report["findings"]:
             if finding["location"].lower() == polyp_location.lower():
                 context["similar_cases"].append({
-                    "patient_age": report["age"],
                     "location": finding["location"],
                     "morphology": finding["morphology"],
                     "classification": finding["classification"],

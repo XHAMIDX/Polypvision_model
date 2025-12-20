@@ -37,6 +37,12 @@ config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 try:
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
+    # Convert relative checkpoint paths to absolute paths
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if 'stage2' in config:
+        output_model = config['stage2'].get('output_model', 'checkpoints/stage2/seg_best.pth')
+        if not os.path.isabs(output_model):
+            config['stage2']['output_model'] = os.path.join(base_dir, output_model)
 except Exception as e:
     st.error(f"Could not load config.yaml: {e}")
     config = {}
@@ -118,11 +124,102 @@ class SegmentationInference:
         
         return overlay, mask
 
+
+# Classification Inference Class
+class ClassificationInference:
+    """Binary classification inference for Hyperplastic/Adenomatous polyps"""
+    
+    def __init__(self, config: dict, device: str = 'cuda'):
+        self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
+        self.config = config
+        
+        self.clf_input_size = config.get('input_size', 224)
+        self.binary_threshold = config.get('binary_threshold', 0.5)
+        self.binary_classes = config.get('binary_classes', ['adenoma', 'hyperplastic'])
+        
+        # Load classification model - must match training architecture from config.yaml
+        stage1_config = config.get('stage1', {})
+        # CRITICAL: Use efficientnet_b2 to match the trained checkpoint (config.yaml stage1.model)
+        model_name = stage1_config.get('model', 'efficientnet_b2')
+        
+        self.clf_model = create_efficientnetv2_classifier(
+            num_classes=2,
+            pretrained=False,
+            model_name=model_name
+        )
+        
+        # Use backbone_pretrained_onA.pth which matches the trained model architecture
+        binary_model_path = stage1_config.get('output_path', 'checkpoints/stage1/backbone_pretrained_onA.pth')
+        try:
+            checkpoint = torch.load(binary_model_path, map_location=self.device, weights_only=False)
+            
+            # Handle different checkpoint formats
+            if isinstance(checkpoint, dict):
+                if 'model_state_dict' in checkpoint:
+                    state_dict = checkpoint['model_state_dict']
+                elif 'state_dict' in checkpoint:
+                    state_dict = checkpoint['state_dict']
+                else:
+                    state_dict = checkpoint
+            else:
+                state_dict = checkpoint
+            
+            # Load with strict=False to handle minor architecture differences
+            self.clf_model.load_state_dict(state_dict, strict=False)
+            
+            self.clf_model = self.clf_model.to(self.device)
+            self.clf_model.eval()
+            self.model_loaded = True
+            st.success(f"✓ Classification model loaded: {model_name}")
+        except Exception as e:
+            st.error(f"Could not load classification model: {e}")
+            self.model_loaded = False
+        
+        self.clf_transform = get_classification_val_transform(self.clf_input_size)
+    
+    def classify(self, image: np.ndarray) -> dict:
+        """Run classification on image"""
+        if not self.model_loaded:
+            return None
+        
+        # Apply transform
+        transformed = self.clf_transform(image=image)
+        image_tensor = transformed['image'].unsqueeze(0).to(self.device)
+        
+        # Run classification
+        with torch.no_grad():
+            import torch.nn.functional as F
+            logits = self.clf_model(image_tensor)
+            probs = F.softmax(logits, dim=1).cpu().numpy()[0]
+        
+        # Reversed mapping: probs[0]=adenoma, probs[1]=hyperplastic
+        adenoma_prob = float(probs[0])
+        hyperplastic_prob = float(probs[1])
+        
+        # Predict: if probs[1] (hyperplastic) is higher, predict hyperplastic, else adenoma
+        predicted_class = 'hyperplastic' if hyperplastic_prob > adenoma_prob else 'adenoma'
+        
+        return {
+            'adenoma_prob': adenoma_prob,
+            'hyperplastic_prob': hyperplastic_prob,
+            'predicted_class': predicted_class,
+            'confidence': float(max(adenoma_prob, hyperplastic_prob))
+        }
+
 # Load segmentation model in session state
 @st.cache_resource
 def load_segmentation_model(config):
     inference_config = config.get('inference', {})
     return SegmentationInference(
+        config=inference_config,
+        device=inference_config.get('device', 'cuda')
+    )
+
+# Load classification model in session state
+@st.cache_resource
+def load_classification_model(config):
+    inference_config = config.get('inference', {})
+    return ClassificationInference(
         config=inference_config,
         device=inference_config.get('device', 'cuda')
     )
@@ -370,29 +467,60 @@ if 'segmentation_overlay' in st.session_state and st.session_state.segmentation_
         st.metric("Mask Threshold", f"{st.session_state.get('seg_threshold', 0.5):.2f}")
     
     if st.button("📊 Classify with AI", key="classify_btn"):
-        with st.spinner("Classifying polyp type..."):
+        with st.spinner("Running local classification model..."):
             try:
-                if not client:
-                    st.error("❌ OpenRouter API not initialized. Check your API credentials.")
+                # Load local classification model
+                clf_model = load_classification_model(config)
+                
+                if not clf_model.model_loaded:
+                    st.error("❌ Local classification model failed to load.")
                 else:
-                    # Use the original image for classification
-                    image_pil = Image.fromarray(st.session_state.image_array.astype('uint8'))
-                    image_data = io.BytesIO()
-                    image_pil.save(image_data, format='PNG')
-                    image_data.seek(0)
-                    image_base64 = base64.standard_b64encode(image_data.getvalue()).decode("utf-8")
+                    # Run local classification
+                    local_result = clf_model.classify(st.session_state.image_array)
                     
-                    # Prepare the prompt with RAG context
-                    system_prompt = RAG_SYSTEM_PROMPTS["polyp_classification"] + "\n\n" + RAG_SYSTEM_PROMPTS["clinical_context"]
+                    # Display local classification results
+                    st.markdown("### 🤖 Stage 1 - Local Classification Results")
+                    col_local1, col_local2, col_local3 = st.columns(3)
+                    with col_local1:
+                        st.metric("Local Prediction", local_result['predicted_class'].upper())
+                    with col_local2:
+                        st.metric("Confidence", f"{local_result['confidence']:.1%}")
+                    with col_local3:
+                        st.metric("Adenoma Prob", f"{local_result['adenoma_prob']:.1%}")
+                    
+                    st.metric("Hyperplastic Prob", f"{local_result['hyperplastic_prob']:.1%}")
+                    
+                    # Now send to API for refined analysis
+                    st.markdown("---")
+                    with st.spinner("Refining with AI model (OpenRouter)..."):
+                        try:
+                            if not client:
+                                st.error("❌ OpenRouter API not initialized.")
+                            else:
+                                # Use the original image for API classification
+                                image_pil = Image.fromarray(st.session_state.image_array.astype('uint8'))
+                                image_data = io.BytesIO()
+                                image_pil.save(image_data, format='PNG')
+                                image_data.seek(0)
+                                image_base64 = base64.standard_b64encode(image_data.getvalue()).decode("utf-8")
+                                
+                                # Prepare the prompt with local model result and RAG context
+                                system_prompt = RAG_SYSTEM_PROMPTS["polyp_classification"] + "\n\n" + RAG_SYSTEM_PROMPTS["clinical_context"]
 
-                    user_prompt = f"""{RAG_SYSTEM_PROMPTS["image_analysis"]}
+                                user_prompt = f"""{RAG_SYSTEM_PROMPTS["image_analysis"]}
+
+LOCAL MODEL ANALYSIS (Stage 1 Binary Classifier):
+- Predicted: {local_result['predicted_class'].upper()}
+- Adenomatous probability: {local_result['adenoma_prob']:.1%}
+- Hyperplastic probability: {local_result['hyperplastic_prob']:.1%}
+- Confidence: {local_result['confidence']:.1%}
 
 COLONOSCOPY DATABASE REFERENCE:
 - Training cases reviewed: {RAG_TRAINING_DATA['total_polyps_classified']} polyps
 - Adenomatous patterns: {RAG_TRAINING_DATA['adenomatous_features']['common_morphologies']}
 - Hyperplastic patterns: {RAG_TRAINING_DATA['hyperplastic_features']['common_morphologies']}
 
-Analyze this polyp image and provide classification.
+Based on the local model analysis and the image, provide refined classification and clinical assessment.
 
 You must respond ONLY with a JSON object in this exact format:
 {{
@@ -401,6 +529,7 @@ You must respond ONLY with a JSON object in this exact format:
     "confidence": "HIGH, MEDIUM, or LOW",
     "description": "Brief clinical description with reference to JNET types or morphology",
     "recommendations": "Clinical recommendations based on classification",
+    "agreement_with_local_model": "Whether AI agrees or disagrees with local model prediction",
     "rag_reference": "Any relevant case from training database"
 }}
 
@@ -412,79 +541,87 @@ If unable to classify, respond with:
     "recommendations": "Please provide a clearer image"
 }}"""
 
-                    # Call the API
-                    response = client.chat.completions.create(
-                        model=MODEL,
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": system_prompt
-                            },
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": user_prompt
-                                    },
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:image/png;base64,{image_base64}"
+                                # Call the API
+                                response = client.chat.completions.create(
+                                    model=MODEL,
+                                    messages=[
+                                        {
+                                            "role": "system",
+                                            "content": system_prompt
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": user_prompt
+                                                },
+                                                {
+                                                    "type": "image_url",
+                                                    "image_url": {
+                                                        "url": f"data:image/png;base64,{image_base64}"
+                                                    }
+                                                }
+                                            ]
                                         }
-                                    }
-                                ]
-                            }
-                        ],
-                        temperature=0.7,
-                        max_tokens=500
-                    )
-                    
-                    # Parse response
-                    result_text = response.choices[0].message.content
-                    
-                    # Display results
-                    st.markdown(f"""
-                    <div class="result-box">
-                    <h3 style="color: black;">✅ Classification Complete</h3>
+                                    ],
+                                    temperature=0.7,
+                                    max_tokens=500
+                                )
                                 
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Extract and display key information
-                    try:
-                        # Try to extract JSON from markdown code blocks if present
-                        json_text = result_text
-                        if "```json" in json_text:
-                            json_text = json_text.split("```json")[1].split("```")[0].strip()
-                        elif "```" in json_text:
-                            json_text = json_text.split("```")[1].split("```")[0].strip()
+                                # Parse response
+                                result_text = response.choices[0].message.content
+                                
+                                # Display results
+                                st.markdown("""
+                                <div class="result-box">
+                                <h3 style="color: black;">✅ AI Classification Complete</h3>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # Extract and display key information
+                                try:
+                                    # Try to extract JSON from markdown code blocks if present
+                                    json_text = result_text
+                                    if "```json" in json_text:
+                                        json_text = json_text.split("```json")[1].split("```")[0].strip()
+                                    elif "```" in json_text:
+                                        json_text = json_text.split("```")[1].split("```")[0].strip()
+                                    
+                                    result_json = json.loads(json_text)
+                                
+                                    st.markdown("### 🎯 Final Classification Results")
+                                    col_a, col_b, col_c = st.columns(3)
+                                
+                                    with col_a:
+                                        st.metric("AI Polyp Type", result_json.get("polyp_type", "N/A"))
+                                    with col_b:
+                                        st.metric("Confidence", result_json.get("confidence", "N/A"))
+                                    with col_c:
+                                        if "adenoma_subtype" in result_json and result_json["adenoma_subtype"]:
+                                            st.metric("Subtype", result_json["adenoma_subtype"])
+                                    
+                                    # Model agreement
+                                    if "agreement_with_local_model" in result_json:
+                                        st.info(f"📋 Model Agreement: {result_json['agreement_with_local_model']}")
+                                    
+                                    st.markdown("### 📝 Clinical Assessment")
+                                    st.write(result_json.get("description", "No description available"))
+                                
+                                    st.markdown("### 💊 Recommendations")
+                                    st.write(result_json.get("recommendations", "No recommendations"))
+                                    
+                                    st.success("✅ Complete analysis pipeline finished!")
+                                
+                                except json.JSONDecodeError as e:
+                                    st.warning(f"Could not parse JSON response: {str(e)}")
+                                    st.info("Raw response:")
+                                    st.code(result_text)
                         
-                        result_json = json.loads(json_text)
-                    
-                        st.markdown("### Classification Results")
-                        col_a, col_b, col_c = st.columns(3)
-                    
-                        with col_a:
-                            st.metric("Polyp Type", result_json.get("polyp_type", "N/A"))
-                        with col_b:
-                            st.metric("Confidence", result_json.get("confidence", "N/A"))
-                        with col_c:
-                            if "adenoma_subtype" in result_json and result_json["adenoma_subtype"]:
-                                st.metric("Subtype", result_json["adenoma_subtype"])
-                        
-                        st.markdown("### Clinical Assessment")
-                        st.write(result_json.get("description", "No description available"))
-                    
-                        st.markdown("### Recommendations")
-                        st.write(result_json.get("recommendations", "No recommendations"))
-                        
-                        st.success("✅ Analysis pipeline complete!")
-                    
-                    except json.JSONDecodeError as e:
-                        st.warning(f"Could not parse JSON response: {str(e)}")
-                        st.info("Raw response:")
-                        st.code(result_text)
+                        except Exception as e:
+                            st.error(f"❌ Error during API refinement: {str(e)}")
+                            import traceback
+                            st.error(traceback.format_exc())
             
             except Exception as e:
                 st.error(f"❌ Error during classification: {str(e)}")
