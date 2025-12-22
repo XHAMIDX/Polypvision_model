@@ -128,7 +128,7 @@ Edit `config.yaml` to customize:
 - **Segmentation**: Dice coefficient, IoU
 - **Confusion matrices** for all classification tasks
 
-## 🔬 Project Attribution & Credits
+### 🔬 Project Attribution & Credits
 
 This project is powered by DataBioX (https://databiox.com), an AI-driven biomedical research initiative focused on developing clinically meaningful deep learning solutions for medical imaging and pathology.
 
@@ -143,14 +143,14 @@ This project is powered by DataBioX (https://databiox.com), an AI-driven biomedi
 - Amir Akbari  
   Supporting development role, backend collaboration, and technical support  
 
+- Mohammad Tashakoripour  
+  Specialized nurse, procedural collaboration, data acquisition, and metadata generation  
+
 - Ata Khodami, MD  
   Medical resident specialist, clinical review, medical supervision, and data collection  
 
 - Parnian Asadollahi, MD  
   Medical resident specialist, clinical review, medical supervision, and data collection  
-
-- Mohammad Tashakoripour  
-  Specialized nurse, procedural collaboration, data acquisition, and metadata generation  
 
 ### Co-Principal Investigator (Co-PI)
 - Hamidreza Bolhasani, PhD  
