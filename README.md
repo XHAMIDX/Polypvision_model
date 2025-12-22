@@ -128,8 +128,32 @@ Edit `config.yaml` to customize:
 - **Segmentation**: Dice coefficient, IoU
 - **Confusion matrices** for all classification tasks
 
-## Notes
+## 🔬 Project Attribution & Credits
 
-- Adjust binary threshold in inference config for higher recall/sensitivity
-- Monitor recall and macro-F1 instead of accuracy due to class imbalance
-- Use segmentation masks to crop ROIs for improved classification (optional)
+This project is powered by DataBioX (https://databiox.com), an AI-driven biomedical research initiative focused on developing clinically meaningful deep learning solutions for medical imaging and pathology.
+
+### Principal Investigator (PI)
+- Mojgan Forootan, MD  
+  Principal Investigator (PI), clinical leadership, medical oversight, and strategic guidance  
+
+### Core Contributors
+- Hamidreza Rastad  
+  Primary model concept, deep learning architecture design, and end-to-end development  
+
+- Amir Akbari  
+  Supporting development role, backend collaboration, and technical support  
+
+- Ata Khodami, MD  
+  Medical resident specialist, clinical review, medical supervision, and data collection  
+
+- Parnian Asadollahi, MD  
+  Medical resident specialist, clinical review, medical supervision, and data collection  
+
+- Mohammad Tashakoripour  
+  Specialized nurse, procedural collaboration, data acquisition, and metadata generation  
+
+### Co-Principal Investigator (Co-PI)
+- Hamidreza Bolhasani, PhD  
+  Co-Principal Investigator (Co-PI), AI and data leadership, data governance, dataset and metadata design, research ideation, and overall scientific coordination  
+
+This repository represents an ongoing research and development effort. Additional contributors may be acknowledged as the project evolves.
