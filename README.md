@@ -98,7 +98,7 @@ python inference/hierarchical_inference.py --image path/to/image.jpg --config co
 - **Medical Metrics**: Macro-F1, balanced accuracy, per-class recall
 - **Early Stopping**: Prevents overfitting with patience-based monitoring
 - **Hierarchical Inference**: Binary classification followed by subtype classification
-- **Checkpoint Management**: Saves best models based on validation metrics
+- **Checkpoint Management**: Saves the best models based on validation metrics
 - **Comprehensive Logging**: TensorBoard integration with confusion matrices
 
 ## Expected Outputs
@@ -128,7 +128,7 @@ Edit `config.yaml` to customize:
 - **Segmentation**: Dice coefficient, IoU
 - **Confusion matrices** for all classification tasks
 
-### 🔬 Project Attribution & Credits
+## 🔬 Project Attribution & Credits
 
 This project is powered by DataBioX (https://databiox.com), an AI-driven biomedical research initiative focused on developing clinically meaningful deep learning solutions for medical imaging and pathology.
 
@@ -145,12 +145,6 @@ This project is powered by DataBioX (https://databiox.com), an AI-driven biomedi
 
 - Mohammad Tashakoripour  
   Specialized nurse, procedural collaboration, data acquisition, and metadata generation  
-
-- Ata Khodami, MD  
-  Medical resident specialist, clinical review, medical supervision, and data collection  
-
-- Parnian Asadollahi, MD  
-  Medical resident specialist, clinical review, medical supervision, and data collection  
 
 ### Co-Principal Investigator (Co-PI)
 - Hamidreza Bolhasani, PhD  
