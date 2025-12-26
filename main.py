@@ -348,10 +348,18 @@ async def segment_image(file: UploadFile = File(...)):
         total_pixels = mask_binary.size
         polyp_percentage = (polyp_pixels / total_pixels) * 100
 
+        # Encode overlay image as base64
+        overlay_pil = Image.fromarray(overlay.astype('uint8'))
+        overlay_buffer = io.BytesIO()
+        overlay_pil.save(overlay_buffer, format='PNG')
+        overlay_buffer.seek(0)
+        overlay_base64 = base64.standard_b64encode(overlay_buffer.getvalue()).decode("utf-8")
+
         return {
             "segmentation": "success",
             "polyp_coverage_percent": float(polyp_percentage),
-            "polyp_pixels": int(polyp_pixels)
+            "polyp_pixels": int(polyp_pixels),
+            "overlay_image": f"data:image/png;base64,{overlay_base64}"
         }
 
     except Exception as e:
