@@ -437,6 +437,16 @@ async def expert_opinion(file: UploadFile = File(...), api_key_valid: bool = Dep
         total_pixels = mask_binary.size
         polyp_coverage = (polyp_pixels / total_pixels) * 100
 
+        # Create visualization overlay (similar to segment_image function)
+        overlay, mask_resized = seg_model.visualize(image_np, segmentation_mask)
+
+        # Encode overlay image as base64
+        overlay_pil = Image.fromarray(overlay.astype('uint8'))
+        overlay_buffer = io.BytesIO()
+        overlay_pil.save(overlay_buffer, format='PNG')
+        overlay_buffer.seek(0)
+        overlay_base64 = base64.standard_b64encode(overlay_buffer.getvalue()).decode("utf-8")
+
         # Prepare image for OpenAI API
         image_data = io.BytesIO()
         image_pil.save(image_data, format='PNG')
@@ -455,6 +465,7 @@ async def expert_opinion(file: UploadFile = File(...), api_key_valid: bool = Dep
                     "polyp_pixels": int(polyp_pixels),
                     "total_pixels": int(total_pixels)
                 },
+                "overlay_image": f"data:image/png;base64,{overlay_base64}",
                 "ai_refined_result": {
                     "polyp_type": "NO_API_CONNECTION",
                     "confidence": "LOW",
@@ -578,6 +589,7 @@ If unable to classify, respond with:
                 "polyp_pixels": int(polyp_pixels),
                 "total_pixels": int(total_pixels)
             },
+            "overlay_image": f"data:image/png;base64,{overlay_base64}",
             "ai_refined_result": result_json
         }
 
