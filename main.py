@@ -33,16 +33,16 @@ load_dotenv()
 
 def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
-    Verify that the provided API key matches the OpenAI API key
+    Verify that the provided API key matches the ENTER_TOKEN
     """
     # Get the expected API key from environment variables
-    expected_api_key = os.getenv("OPENAI_API_KEY", "")
+    expected_api_key = os.getenv("ENTER_TOKEN", "")
 
     # Check if the expected API key is set
     if not expected_api_key:
         raise HTTPException(
             status_code=500,
-            detail="Server configuration error: OPENAI_API_KEY not set"
+            detail="Server configuration error: ENTER_TOKEN not set"
         )
 
     # Compare the provided key with the expected key
