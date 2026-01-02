@@ -1,5 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import numpy as np
 import cv2
 from PIL import Image
@@ -21,10 +22,38 @@ from models import create_efficientnetv2_classifier, create_segmentation_model
 from utils import get_classification_val_transform, get_segmentation_val_transform
 from inference.colonoscopy_rag_database import RAG_SYSTEM_PROMPTS, get_rag_context, RAG_TRAINING_DATA
 
+# Initialize security scheme
+security = HTTPBearer()
+
 app = FastAPI()
 
 # Load environment variables from .env file
 load_dotenv()
+
+
+def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Verify that the provided API key matches the OpenAI API key
+    """
+    # Get the expected API key from environment variables
+    expected_api_key = os.getenv("OPENAI_API_KEY", "")
+
+    # Check if the expected API key is set
+    if not expected_api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="Server configuration error: OPENAI_API_KEY not set"
+        )
+
+    # Compare the provided key with the expected key
+    if credentials.credentials != expected_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Invalid API key"
+        )
+
+    # If verification passes, return True or any relevant data
+    return True
 
 # Get configuration from environment variables
 API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -268,7 +297,7 @@ def info():
 
 
 @app.post("/classify")
-async def classify_image(file: UploadFile = File(...)):
+async def classify_image(file: UploadFile = File(...), api_key_valid: bool = Depends(verify_api_key)):
     """Classify polyp as hyperplastic or adenomatous"""
     try:
         # Validate file type
@@ -309,7 +338,7 @@ async def classify_image(file: UploadFile = File(...)):
 
 
 @app.post("/segment")
-async def segment_image(file: UploadFile = File(...)):
+async def segment_image(file: UploadFile = File(...), api_key_valid: bool = Depends(verify_api_key)):
     """Segment polyp from the image"""
     try:
         # Validate file type
@@ -368,7 +397,7 @@ async def segment_image(file: UploadFile = File(...)):
 
 
 @app.post("/expert")
-async def expert_opinion(file: UploadFile = File(...)):
+async def expert_opinion(file: UploadFile = File(...), api_key_valid: bool = Depends(verify_api_key)):
     """Get expert opinion combining classification, segmentation and RAG model"""
     try:
         # Validate file type
