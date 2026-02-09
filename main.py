@@ -461,10 +461,13 @@ async def expert_opinion(file: UploadFile = File(...), api_key_valid: bool = Dep
         overlay_buffer.seek(0)
         overlay_base64 = base64.standard_b64encode(overlay_buffer.getvalue()).decode("utf-8")
         print("DEBUG: Overlay encoded as base64")
-
+        # construction zone !
+        MAX_API_IMAGE_SIZE = (512, 512)
+        image_for_api = image_pil.copy()
+        image_for_api.thumbnail(MAX_API_IMAGE_SIZE)
         # Prepare image for OpenAI API
         image_data = io.BytesIO()
-        image_pil.save(image_data, format='PNG')
+        image_for_api.save(image_data, format='PNG')
         image_data.seek(0)
         image_base64 = base64.standard_b64encode(image_data.getvalue()).decode("utf-8")
 
