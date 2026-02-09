@@ -242,21 +242,27 @@ class ClassificationInference:
 def load_models():
     """Load all models once and store in cache"""
     global model_cache
+    print("DEBUG: Starting to load models...")
 
-    # Load configuration for inference
     inference_config = config.get('inference', {})
 
     if 'segmentation_model' not in model_cache:
+        print("DEBUG: Loading segmentation model...")
         model_cache['segmentation_model'] = SegmentationInference(
             config=config,
             device=inference_config.get('device', 'cuda')
         )
+        print(f"DEBUG: Segmentation model loaded? {model_cache['segmentation_model'].model_loaded}")
 
     if 'classification_model' not in model_cache:
+        print("DEBUG: Loading classification model...")
         model_cache['classification_model'] = ClassificationInference(
             config=config,
             device=inference_config.get('device', 'cuda')
         )
+        print(f"DEBUG: Classification model loaded? {model_cache['classification_model'].model_loaded}")
+
+    print("DEBUG: Model loading completed.")
 
 
 def get_client():
@@ -400,52 +406,61 @@ async def segment_image(file: UploadFile = File(...), api_key_valid: bool = Depe
 async def expert_opinion(file: UploadFile = File(...), api_key_valid: bool = Depends(verify_api_key)):
     """Get expert opinion combining classification, segmentation and RAG model"""
     try:
-        # Validate file type
+        print("DEBUG: /expert called")
+
         if not file.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="File must be an image")
+        print(f"DEBUG: Received file of type {file.content_type}")
 
-        # Load models if not already loaded
         if not model_cache:
+            print("DEBUG: Model cache empty, loading models...")
             load_models()
 
-        # Read and process image
+        # Read image
         contents = await file.read()
+        print("DEBUG: Image read into memory")
         image = Image.open(io.BytesIO(contents))
         image_np = np.array(image.convert('RGB'))
         image_pil = Image.fromarray(image_np.astype('uint8'))
+        print(f"DEBUG: Image converted to numpy array with shape {image_np.shape}")
 
-        # Run classification
+        # Classification
         clf_model = model_cache['classification_model']
         if not clf_model.model_loaded:
             raise HTTPException(status_code=500, detail="Classification model failed to load")
-
+        print("DEBUG: Running classification...")
         classification_result = clf_model.classify(image_np)
+        print(f"DEBUG: Classification result: {classification_result}")
 
-        # Run segmentation
+        # Segmentation
         seg_model = model_cache['segmentation_model']
         if not seg_model.model_loaded:
             raise HTTPException(status_code=500, detail="Segmentation model failed to load")
-
+        print("DEBUG: Running segmentation...")
         segmentation_mask = seg_model.segment(image_np)
-
         if segmentation_mask is None:
             raise HTTPException(status_code=500, detail="Segmentation failed")
+        print(f"DEBUG: Segmentation mask shape: {segmentation_mask.shape}")
 
-        # Calculate segmentation stats
+        # Overlay
+        print("DEBUG: Creating overlay...")
+        overlay, mask_resized = seg_model.visualize(image_np, segmentation_mask)
+        print("DEBUG: Overlay created")
+
+        # Calculate coverage
         mask_binary = (segmentation_mask > seg_model.seg_threshold).astype(np.uint8)
         polyp_pixels = np.sum(mask_binary)
         total_pixels = mask_binary.size
         polyp_coverage = (polyp_pixels / total_pixels) * 100
+        print(f"DEBUG: Polyp coverage: {polyp_coverage:.2f}% ({polyp_pixels}/{total_pixels})")
 
-        # Create visualization overlay (similar to segment_image function)
-        overlay, mask_resized = seg_model.visualize(image_np, segmentation_mask)
-
-        # Encode overlay image as base64
+        # Encode overlay
         overlay_pil = Image.fromarray(overlay.astype('uint8'))
         overlay_buffer = io.BytesIO()
         overlay_pil.save(overlay_buffer, format='PNG')
         overlay_buffer.seek(0)
         overlay_base64 = base64.standard_b64encode(overlay_buffer.getvalue()).decode("utf-8")
+        print("DEBUG: Overlay encoded as base64")
 
         # Prepare image for OpenAI API
         image_data = io.BytesIO()
@@ -453,10 +468,11 @@ async def expert_opinion(file: UploadFile = File(...), api_key_valid: bool = Dep
         image_data.seek(0)
         image_base64 = base64.standard_b64encode(image_data.getvalue()).decode("utf-8")
 
-        # Initialize OpenAI client
+        # OpenAI / RAG call
+        print("DEBUG: Initializing OpenAI client...")
         client = get_client()
         if not client:
-            # Return only the local model results if API is not available
+            print("DEBUG: OpenAI client not available, returning local results only")
             return {
                 "expert_opinion": "success_with_local_models_only",
                 "local_classification": classification_result,
@@ -469,13 +485,14 @@ async def expert_opinion(file: UploadFile = File(...), api_key_valid: bool = Dep
                 "ai_refined_result": {
                     "polyp_type": "NO_API_CONNECTION",
                     "confidence": "LOW",
-                    "description": "Could not connect to the external AI service for refined analysis. Using local models only.",
-                    "recommendations": "Please check your API configuration and connection",
-                    "agreement_with_local_model": "No external model to compare with"
+                    "description": "Using local models only",
+                    "recommendations": "Check API configuration",
+                    "agreement_with_local_model": "N/A"
                 },
-                "warning": "API connection not available - results based on local models only"
+                "warning": "API connection not available"
             }
 
+        print("DEBUG: Preparing prompt for RAG model...")
         # Prepare prompt for RAG model
         system_prompt = RAG_SYSTEM_PROMPTS["polyp_classification"] + "\n\n" + RAG_SYSTEM_PROMPTS["clinical_context"]
 
@@ -519,68 +536,44 @@ If unable to classify, respond with:
 }}"""
 
         # Call the OpenAI API
+         # API call
         try:
+            print("DEBUG: Sending request to OpenAI...")
             response = client.chat.completions.create(
                 model=MODEL,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": user_prompt
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{image_base64}"
-                                }
-                            }
-                        ]
-                    }
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": user_prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}}
+                    ]}
                 ],
                 temperature=0.7,
                 max_tokens=500
             )
+            print("DEBUG: Response received from OpenAI")
 
             # Parse response
             result_text = response.choices[0].message.content
+            print(f"DEBUG: Raw API response: {result_text[:200]}...")  # print first 200 chars
 
-            # Attempt to extract JSON
             try:
-                # Try to extract JSON from markdown code blocks if present
                 json_text = result_text
                 if "```json" in json_text:
                     json_text = json_text.split("```json")[1].split("```")[0].strip()
                 elif "```" in json_text:
                     json_text = json_text.split("```")[1].split("```")[0].strip()
-
                 result_json = json.loads(json_text)
+                print("DEBUG: API response parsed successfully")
             except json.JSONDecodeError:
-                # If parsing fails, return raw response
-                result_json = {
-                    "polyp_type": "PARSING_ERROR",
-                    "confidence": "LOW",
-                    "description": "Could not parse the AI response",
-                    "recommendations": "Internal error in processing",
-                    "raw_response": result_text
-                }
-        except Exception as api_error:
-            print(f"API call error: {api_error}")
-            # Return local results with API error information
-            result_json = {
-                "polyp_type": "API_ERROR",
-                "confidence": "LOW",
-                "description": f"API service error occurred: {str(api_error)}",
-                "recommendations": "Please check your API credentials and connection",
-                "api_error_details": str(api_error)
-            }
+                print("DEBUG: JSON parsing failed, returning raw response")
+                result_json = {"polyp_type": "PARSING_ERROR", "raw_response": result_text}
 
-        # Return combined result
+        except Exception as api_error:
+            print(f"DEBUG: API call error: {api_error}")
+            result_json = {"polyp_type": "API_ERROR", "error_details": str(api_error)}
+
+        print("DEBUG: Returning expert opinion response")
         return {
             "expert_opinion": "success",
             "local_classification": classification_result,
@@ -594,7 +587,7 @@ If unable to classify, respond with:
         }
 
     except Exception as e:
-        print(f"Expert opinion error: {e}")
+        print(f"DEBUG: Expert opinion exception: {e}")
         import traceback
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Expert opinion failed: {str(e)}")
