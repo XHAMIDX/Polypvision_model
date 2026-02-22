@@ -9,6 +9,7 @@ import torch
 import yaml
 import os
 import sys
+import re
 from openai import OpenAI
 from dotenv import load_dotenv
 import base64
@@ -57,7 +58,7 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)
 
 # Get configuration from environment variables
 API_KEY = os.getenv("OPENAI_API_KEY", "")
-BASE_URL = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.gapgpt.app/v1")
 MODEL = os.getenv("OPENAI_MODEL", "qwen/qwen2.5-vl-32b-instruct:free")
 
 # Load configuration for models
@@ -289,6 +290,86 @@ def get_client():
         return None
 
 
+def extract_info_from_narrative(narrative: str, local_classification: dict) -> dict:
+    """
+    Extract structured information from AI's narrative response when JSON parsing fails.
+    Looks for key clinical indicators in the text.
+    """
+    narrative_lower = narrative.lower()
+    
+    # Determine polyp type from narrative
+    polyp_type = "UNABLE_TO_CLASSIFY"
+    confidence = "LOW"
+    agreement = "UNKNOWN"
+    
+    # Check for adenoma indicators
+    adenoma_keywords = ["adenoma", "adenomatous", "neoplastic", "tubular", "villous", 
+                        "tubulovillous", "jnet type 2", "jnet 2a", "jnet 2b", "jnet 2c",
+                        "lateral spreading tumor", "lst", "granular"]
+    hyperplastic_keywords = ["hyperplastic", "non-neoplastic", "jnet type 1", "jnet 1",
+                            "small", "pale", "sessile"]
+    
+    adenoma_score = sum(1 for kw in adenoma_keywords if kw in narrative_lower)
+    hyperplastic_score = sum(1 for kw in hyperplastic_keywords if kw in narrative_lower)
+    
+    if adenoma_score > hyperplastic_score:
+        polyp_type = "ADENOMATOUS"
+    elif hyperplastic_score > adenoma_score:
+        polyp_type = "HYPERPLASTIC"
+    
+    # Check for confidence indicators
+    if any(kw in narrative_lower for kw in ["confident", "clear", "definitely", "certain"]):
+        confidence = "HIGH"
+    elif any(kw in narrative_lower for kw in ["uncertain", "unclear", "possibly", "might be"]):
+        confidence = "LOW"
+    else:
+        confidence = "MEDIUM"
+    
+    # Check agreement with local model
+    local_prediction = local_classification.get('predicted_class', '').lower()
+    if polyp_type == "ADENOMATOUS" and local_prediction == "adenoma":
+        agreement = "AGREES"
+    elif polyp_type == "HYPERPLASTIC" and local_prediction == "hyperplastic":
+        agreement = "AGREES"
+    elif polyp_type != "UNABLE_TO_CLASSIFY":
+        agreement = "DISAGREES"
+    
+    # Extract key observations for description
+    description_parts = []
+    if "lateral spreading tumor" in narrative_lower or "lst" in narrative_lower:
+        description_parts.append("Lateral Spreading Tumor (LST) morphology")
+    if "granular" in narrative_lower:
+        description_parts.append("granular surface texture")
+    if "nodule" in narrative_lower:
+        description_parts.append("nodular component")
+    if "jnet" in narrative_lower:
+        # Try to extract JNET type
+        jnet_match = re.search(r'jnet\s*(type\s*)?(\d+[a-c]?)', narrative_lower)
+        if jnet_match:
+            description_parts.append(f"suggestive of JNET Type {jnet_match.group(2).upper()}")
+    
+    description = "; ".join(description_parts) if description_parts else "Analysis based on white light endoscopy image"
+    
+    # Generate recommendations based on classification
+    if polyp_type == "ADENOMATOUS":
+        recommendations = "Resection recommended. Histopathological examination required for definitive diagnosis."
+    elif polyp_type == "HYPERPLASTIC":
+        recommendations = "Small hyperplastic polyps may not require resection. Consider clinical context."
+    else:
+        recommendations = "Further evaluation with NBI or chromoendoscopy recommended for better characterization."
+    
+    return {
+        "polyp_type": polyp_type,
+        "adenoma_subtype": "NOT_APPLICABLE" if polyp_type != "ADENOMATOUS" else "TUBULAR",
+        "confidence": confidence,
+        "description": description,
+        "recommendations": recommendations,
+        "agreement_with_local_model": agreement,
+        "rag_reference": "Narrative analysis - JSON format not provided by model",
+        "raw_narrative": narrative[:1000] + "..." if len(narrative) > 1000 else narrative
+    }
+
+
 @app.get("/")
 def health_check():
     return {"health_check": "OK I am running on my own!"}
@@ -462,12 +543,12 @@ async def expert_opinion(file: UploadFile = File(...), api_key_valid: bool = Dep
         overlay_base64 = base64.standard_b64encode(overlay_buffer.getvalue()).decode("utf-8")
         print("DEBUG: Overlay encoded as base64")
         # construction zone !
-        MAX_API_IMAGE_SIZE = (512, 512)
-        image_for_api = image_pil.copy()
-        image_for_api.thumbnail(MAX_API_IMAGE_SIZE)
+        # MAX_API_IMAGE_SIZE = (512, 512)
+        # image_for_api = image_pil.copy()
+        # image_for_api.thumbnail(MAX_API_IMAGE_SIZE)
         # Prepare image for OpenAI API
         image_data = io.BytesIO()
-        image_for_api.save(image_data, format='PNG')
+        image_pil.save(image_data, format='PNG')
         image_data.seek(0)
         image_base64 = base64.standard_b64encode(image_data.getvalue()).decode("utf-8")
 
@@ -519,14 +600,16 @@ COLONOSCOPY DATABASE REFERENCE:
 
 Based on the local model analysis and the image, provide refined classification and clinical assessment.
 
-You must respond ONLY with a JSON object in this exact format:
+⚠️ IMPORTANT: Your response MUST be ONLY a valid JSON object. Do NOT include any explanation, reasoning, or text before or after the JSON.
+
+Respond with this exact JSON format:
 {{
     "polyp_type": "HYPERPLASTIC or ADENOMATOUS",
-    "adenoma_subtype": "TUBULAR, VILLOUS, or TUBULOVILLOUS (only if ADENOMATOUS)",
+    "adenoma_subtype": "TUBULAR, VILLOUS, or TUBULOVILLOUS (only if ADENOMATOUS, else omit)",
     "confidence": "HIGH, MEDIUM, or LOW",
     "description": "Brief clinical description with reference to JNET types or morphology",
     "recommendations": "Clinical recommendations based on classification",
-    "agreement_with_local_model": "Whether AI agrees or disagrees with local model prediction",
+    "agreement_with_local_model": "AGREES or DISAGREES or PARTIALLY_AGREES",
     "rag_reference": "Any relevant case from training database"
 }}
 
@@ -535,8 +618,10 @@ If unable to classify, respond with:
     "polyp_type": "UNABLE_TO_CLASSIFY",
     "confidence": "LOW",
     "description": "Reason why classification failed",
-    "recommendations": "Please provide a clearer image"
-}}"""
+    "recommendations": "Please provide a clearer image or use NBI/chromoendoscopy"
+}}
+
+Remember: ONLY output the JSON object, nothing else."""
 
         # Call the OpenAI API
          # API call
@@ -551,26 +636,65 @@ If unable to classify, respond with:
                         {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}}
                     ]}
                 ],
-                temperature=0.7,
-                max_tokens=500
+                temperature=0.3,
+                max_tokens=1500
             )
             print("DEBUG: Response received from OpenAI")
 
             # Parse response
-            result_text = response.choices[0].message.content
+            # print("LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL : " , response)
+            msg = response.choices[0].message
+            result_text = ""
+
+            # Primary: normal content (OpenAI-style)
+            if msg.content:
+                result_text = msg.content
+
+            # Fallback: Gemini reasoning channel
+            elif hasattr(msg, "reasoning_content") and msg.reasoning_content:
+                result_text = msg.reasoning_content
+
+            print("DEBUG extracted text length:", len(result_text))
             print(f"DEBUG: Raw API response: {result_text[:200]}...")  # print first 200 chars
 
-            try:
-                json_text = result_text
-                if "```json" in json_text:
-                    json_text = json_text.split("```json")[1].split("```")[0].strip()
-                elif "```" in json_text:
-                    json_text = json_text.split("```")[1].split("```")[0].strip()
-                result_json = json.loads(json_text)
-                print("DEBUG: API response parsed successfully")
-            except json.JSONDecodeError:
-                print("DEBUG: JSON parsing failed, returning raw response")
-                result_json = {"polyp_type": "PARSING_ERROR", "raw_response": result_text}
+            # Try to extract JSON from the response
+            result_json = None
+            
+            # Method 1: Look for JSON code blocks
+            if "```json" in result_text:
+                json_text = result_text.split("```json")[1].split("```")[0].strip()
+                try:
+                    result_json = json.loads(json_text)
+                    print("DEBUG: JSON parsed from ```json block")
+                except json.JSONDecodeError:
+                    pass
+            
+            # Method 2: Look for generic code blocks
+            if result_json is None and "```" in result_text:
+                json_text = result_text.split("```")[1].split("```")[0].strip()
+                try:
+                    result_json = json.loads(json_text)
+                    print("DEBUG: JSON parsed from ``` block")
+                except json.JSONDecodeError:
+                    pass
+            
+            # Method 3: Try to find JSON object in text (starts with { and ends with })
+            if result_json is None:
+                # Find the first { and last } to extract potential JSON
+                start_idx = result_text.find("{")
+                end_idx = result_text.rfind("}")
+                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                    json_text = result_text[start_idx:end_idx + 1]
+                    try:
+                        result_json = json.loads(json_text)
+                        print("DEBUG: JSON extracted from text content")
+                    except json.JSONDecodeError:
+                        pass
+            
+            # Method 4: If all parsing fails, extract key info from the narrative
+            if result_json is None:
+                print("DEBUG: JSON parsing failed, extracting key info from narrative")
+                result_json = extract_info_from_narrative(result_text, classification_result)
 
         except Exception as api_error:
             print(f"DEBUG: API call error: {api_error}")
@@ -600,3 +724,10 @@ if __name__ == "__main__":
     # Initialize models when the server starts
     load_models()
     print("Models loaded. Server starting...")
+
+
+
+
+
+
+    ChatCompletion(id='CAiKacr5HObjz7IPzfqB6AY', choices=[Choice(finish_reason='length', index=0, logprobs=None, message=ChatCompletionMessage(content='', refusal=None, role='assistant', annotations=None, audio=None, function_call=None, tool_calls=None, reasoning_content="**My Endoscopy AI Assistant Analysis**\n\nOkay, here's how I'm approaching this image analysis. The user wants me to classify this polyp, and I need to be precise.\n\nFirst, I'm diving deep into the image. I'm seeing a really interesting surface pattern – almost cerebriform, like a little brain. It's regular and organized, and that's a key observation. The vessels are a little obscured, but the surface pattern is so prominent that they don’t dominate the image. It doesn't scream JNET 3 (amorphous) or 2B (irregular vessels) at me. It doesn’t have the classic simple dark/white spots of JNET 1 either. To me, this organized, almost branched pattern is strongly suggestive of a JNET 2A classification.\n\nMorphologically, this lesion is a classic Lateral Spreading Tumor (LST) – large and flat, spreading out across the colonic mucosa. It looks granular and quite homogenous across the surface. This strongly indicates the granular type of LST (LST-G), which lines up with the Paris 0-IIa classification.\n\nNow, let's look at the local model's analysis. Hmm, the model predicts HYPERPLASTIC with 93.8% confidence. That's a strong prediction, but I'm not entirely convinced!\n\nTime to compare. My visual assessment – the LST-G, the JNET 2A surface – screams **ADENOMATOUS** to me, specifically a low-grade adenoma. The local model's hyperplastic prediction, with that high confidence, is directly at odds with my analysis. It's an inconsistency!\n\nThankfully, the clinical standards provided reinforce my viewpoint. They list lateral spreading lesions as indicators of adenomatous polyps, just like this one! Also, flat elevated morphology (0-IIA) and JNET type 2a are specifically listed as adenomatous indicators. The evidence, the image, and the clinical guidelines all point towards the same conclusion.\n"))], created=1770653704, model='gemini-2.5-pro', object='chat.completion', service_tier=None, system_fingerprint=None, usage=CompletionUsage(completion_tokens=497, prompt_tokens=1424, total_tokens=1921, completion_tokens_details=CompletionTokensDetails(accepted_prediction_tokens=0, audio_tokens=None, reasoning_tokens=497, rejected_prediction_tokens=0), prompt_tokens_details=PromptTokensDetails(audio_tokens=None, cached_tokens=None, text_tokens=1166, image_tokens=258)))
