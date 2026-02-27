@@ -8,6 +8,9 @@ import io
 import torch
 import yaml
 import os
+# Force CPU-only mode to avoid cuDNN errors on systems without real GPU
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+torch.set_num_threads(4)  # Limit CPU threads
 import sys
 import re
 from openai import OpenAI
