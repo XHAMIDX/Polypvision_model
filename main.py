@@ -245,6 +245,12 @@ def load_models():
     global model_cache
     print("DEBUG: Starting to load models...")
 
+    # Clear CUDA cache to avoid "could not create a primitive" errors
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        print("DEBUG: CUDA cache cleared")
+
     inference_config = config.get('inference', {})
 
     if 'segmentation_model' not in model_cache:
