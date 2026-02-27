@@ -162,6 +162,7 @@ class ClassificationInference:
     def __init__(self, config: dict, device: str = 'cuda'):
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         self.config = config
+        self.model_loaded = False  # Initialize first
 
         self.clf_input_size = config.get('input_size', 224)
         self.binary_threshold = config.get('binary_threshold', 0.5)
@@ -172,19 +173,24 @@ class ClassificationInference:
         # CRITICAL: Use efficientnet_b2 to match the trained checkpoint (config.yaml stage1.model)
         model_name = stage1_config.get('model', 'efficientnet_b2')
 
-        self.clf_model = create_efficientnetv2_classifier(
-            num_classes=2,
-            pretrained=False,
-            model_name=model_name
-        )
-
         # Use backbone_pretrained_onA.pth which matches the trained model architecture
         binary_model_path = stage1_config.get('output_path', 'checkpoints/stage1/backbone_pretrained_onA.pth')
         # Convert relative path to absolute path based on the project directory
         abs_clf_model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), binary_model_path)
 
         try:
-            checkpoint = torch.load(abs_clf_model_path, map_location=self.device, weights_only=False)
+            print(f"DEBUG: Creating classification model ({model_name}) on CPU first...")
+            # Create model on CPU first to avoid cuDNN initialization issues
+            cpu_device = torch.device('cpu')
+            
+            self.clf_model = create_efficientnetv2_classifier(
+                num_classes=2,
+                pretrained=False,
+                model_name=model_name
+            )
+            
+            print(f"DEBUG: Loading checkpoint from: {abs_clf_model_path}")
+            checkpoint = torch.load(abs_clf_model_path, map_location=cpu_device, weights_only=False)
 
             # Handle different checkpoint formats
             if isinstance(checkpoint, dict):
@@ -199,20 +205,25 @@ class ClassificationInference:
 
             # Load with strict=False to handle minor architecture differences
             self.clf_model.load_state_dict(state_dict, strict=False)
+            print(f"DEBUG: Checkpoint loaded successfully, moving to {self.device}")
 
+            # Now move to target device
             self.clf_model = self.clf_model.to(self.device)
             self.clf_model.eval()
             self.model_loaded = True
             print(f"✓ Classification model loaded: {model_name}")
         except Exception as e:
+            import traceback
             print(f"Could not load classification model: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
             self.model_loaded = False
+            self.clf_model = None
 
         self.clf_transform = get_classification_val_transform(self.clf_input_size)
 
     def classify(self, image: np.ndarray) -> dict:
         """Run classification on image"""
-        if not self.model_loaded:
+        if not self.model_loaded or self.clf_model is None:
             return None
 
         # Apply transform
