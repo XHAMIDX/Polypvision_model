@@ -11,7 +11,10 @@ import os
 # Force CPU-only mode to avoid cuDNN errors on systems without real GPU
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 # Disable oneDNN custom primitives to avoid "could not create a primitive" errors
-os.environ["DNNL_MAX_CPU_ISA"] = "AVX2"
+os.environ["TORCH_USE_DNNL"] = "0"
+os.environ["DNNL_DISABLE"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["MKL_SERVICE_FORCE_INTEL"] = "1"
 torch.set_num_threads(4)  # Limit CPU threads
 import sys
