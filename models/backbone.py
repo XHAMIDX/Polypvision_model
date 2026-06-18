@@ -39,15 +39,29 @@ class EfficientNetV2Classifier(nn.Module):
             num_classes=0,  # Remove classifier head
             global_pool=''  # Remove global pooling
         )
-        
-        # Get feature dimension
-        with torch.no_grad():
-            dummy_input = torch.randn(1, 3, 224, 224)
-            dummy_output = self.backbone(dummy_input)
-            if len(dummy_output.shape) == 4:
-                self.feature_dim = dummy_output.shape[1]
-            else:
-                self.feature_dim = dummy_output.shape[-1]
+
+        # Get feature dimension from timm's model config (no dummy forward pass needed)
+        # This avoids CUDA/cuDNN initialization issues on CPU-only systems
+        try:
+            # Timm models expose feature info through num_features attribute
+            self.feature_dim = self.backbone.num_features
+        except AttributeError:
+            # Fallback: use default based on common EfficientNet architectures
+            feature_dims = {
+                'tf_efficientnetv2_s': 1280,
+                'tf_efficientnetv2_m': 1280,
+                'tf_efficientnetv2_l': 1280,
+                'efficientnet_b0': 1280,
+                'efficientnet_b1': 1280,
+                'efficientnet_b2': 1408,
+                'efficientnet_b3': 1536,
+                'efficientnet_b4': 1792,
+                'efficientnet_b5': 2048,
+                'efficientnet_b6': 2304,
+                'efficientnet_b7': 2560,
+            }
+            self.feature_dim = feature_dims.get(model_name, 1280)
+            print(f"Warning: Could not get num_features from model, using fallback: {self.feature_dim}")
         
         # Global pooling
         self.global_pool = nn.AdaptiveAvgPool2d(1)
